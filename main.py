@@ -10,12 +10,23 @@ ELEMENTS_COUNT = 670
 BACKTEST_MODE = True
 BACKTEST_FROM = "2017-01-01T00:00:00Z"
 BACKTEST_TO = "2017-08-19T00:00:00Z"
-instrument = "EUR_USD"
+SR_TEMPORALITY = "D"
+PROCESS_TEMPORALITY = "H1"
+instrument = "GBP_USD"
 finalReport = []
 REPORT_PATH = "./final_report.csv"
 SUPPORTS_PATH = "./sr_final_report.csv"
 
 def main():
+    if BACKTEST_MODE:
+        print("INIT BACKTEST")
+        print("-------------")
+        print("FROM: ", BACKTEST_FROM)
+        print("TO: ", BACKTEST_TO)
+        print("IN: ", instrument)
+        print("-------------")
+        print("")
+
     getDataToAnalize(instrument, ELEMENTS_COUNT)
     if BACKTEST_MODE:
         getBackTestData(instrument)
@@ -58,7 +69,7 @@ def getDataToAnalize(instrument, count):
 
     candlesApi = Candles()
     srKawrgs = {}
-    srKawrgs['granularity'] = "D"
+    srKawrgs['granularity'] = SR_TEMPORALITY
 
 
     if BACKTEST_MODE:
@@ -74,7 +85,7 @@ def getBackTestData(instrument):
 
     candlesApi = Candles()
     srKawrgs = {}
-    srKawrgs['granularity'] = "H1"
+    srKawrgs['granularity'] = PROCESS_TEMPORALITY
     srKawrgs['fromTime'] = BACKTEST_FROM
     srKawrgs['toTime'] = BACKTEST_TO
 

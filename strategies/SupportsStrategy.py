@@ -43,40 +43,28 @@ class SupportsStrategy(object):
 
             lastCrossedLine, lastCrossPoint = self.getLastLineCrossedFrom(candle, line)
 
-            refutesCount, upRefutesCount, downRefutesCount = self.getSupportRefutesCountFrom(lastCrossPoint, candle, line)
+            if lastCrossPoint is None:
+                return None
 
-            if refutesCount > 2:
+            pullBackExists = self.getPullBack(lastCrossPoint, candle, line)
+
+            #refutesCount, upRefutesCount, downRefutesCount = self.getSupportRefutesCountFrom(lastCrossPoint, candle, line)
+
+            if pullBackExists:
                 min48, max48 = self.getMinMaxFromLastCrossPoint(candle, lastCrossPoint)
-
-                if lastCrossedLine > line :
-                    if upRefutesCount > downRefutesCount:
-                        tendencia = "TOHIGH"
-                    elif downRefutesCount > upRefutesCount:
-                        tendencia = "TOLOW"
-                    else:
-                        tendencia = "TOHIGH"
-                elif lastCrossedLine < line:
-                    if downRefutesCount > upRefutesCount:
-                        tendencia = "TOLOW"
-                    elif upRefutesCount > downRefutesCount:
-                        tendencia = "TOHIGH"
-                    else:
-                        tendencia = "TOLOW"
-                else:
-                    tendencia = None
-
-                if tendencia == "TOHIGH":
-                    type = "BUY"
-                    if max48 > nearResistence:
-                        auxSupport, nearResistence = self.getNearLines(max48)
-                elif tendencia == "TOLOW":
+                if lastCrossedLine > line:
                     type = "SELL"
                     if min48 < nearSupport:
                         nearSupport, auxResistence = self.getNearLines(min48)
+                elif lastCrossedLine < line:
+                    type = "BUY"
+                    if max48 > nearResistence:
+                        auxSupport, nearResistence = self.getNearLines(max48)
                 else:
                     return None
-
                 return Action.Action().New(type, min48, max48, nearSupport, nearResistence, candleDate)
+            else:
+                return None
         else:
             return None
 
@@ -144,23 +132,10 @@ class SupportsStrategy(object):
         return np.searchsorted(self.supportsAndResistences, [price, ], side='right')[0]
 
     def getSupportRefutesCountFrom(self, lastCrossedCandle, candle, nearSupport):
-        lastCandles = self.getCandlesInnerCandles(lastCrossedCandle, candle)
-        refutes = {}
-        actualCross = None
         upRefutes = []
         downRefutes = []
 
-        for candleItem in lastCandles:
-            if cross.priceInRange(nearSupport, candleItem.mid.h, candleItem.mid.l):
-                actualCross = candleItem
-                if actualCross not in refutes:
-                    refutes[actualCross] = []
-            else:
-                if actualCross is not None:
-                    refutes[actualCross].append(candleItem)
-
-
-        validRefutes = [row for row in refutes if len(refutes[row]) > 5]
+        refutes, validRefutes = self.getLineRefutes(lastCrossedCandle, candle, nearSupport)
 
         for refute in refutes:
             if refute not in validRefutes:
@@ -172,6 +147,43 @@ class SupportsStrategy(object):
                 downRefutes.append(refute)
 
         return len(validRefutes), len(upRefutes), len(downRefutes)
+
+
+    def getLineRefutes(self, lastCrossedCandle, candle, line):
+        refutes = {}
+        actualCross = None
+
+        lastCandles = self.getCandlesInnerCandles(lastCrossedCandle, candle)
+
+        for candleItem in lastCandles:
+            if cross.priceInRange(line, candleItem.mid.h, candleItem.mid.l):
+                actualCross = candleItem
+                if actualCross not in refutes:
+                    refutes[actualCross] = []
+            else:
+                if actualCross is not None:
+                    refutes[actualCross].append(candleItem)
+
+
+        validRefutes = [row for row in refutes if len(refutes[row]) > 5]
+
+        return refutes, validRefutes
+
+    def getPullBack(self, lastCrossedCandle, candle, line):
+        validRefutesCount, upRefutesCount, downRefutesCount = self.getSupportRefutesCountFrom(lastCrossedCandle, candle, line)
+
+        if validRefutesCount == 1:
+            if lastCrossedCandle.mid.l > candle.mid.l:
+                #BAJISTA
+                if downRefutesCount == 1:
+                    return True
+                    #PULLBACK
+            else:
+                #ALCISTA
+                if upRefutesCount == 1:
+                    return True
+                    #THROWBACK
+        return False
 
     def getTendenciaFrom(self, candle):
         lastNElements = self.getLastNCandlesFrom(candle, 192)
@@ -236,12 +248,15 @@ class SupportsStrategy(object):
 
         candles = self.getCandlesFrom(candle)
 
+        if candles is None:
+            return None, None
+
         for i in range(len(candles) - 1, -1,-1):
             candle = candles[i]
             for line in [line for line in self.supportsAndResistences if actualline != line]:
                 if cross.priceInRange(line, candle.mid.h, candle.mid.l):
                     return line, candle
-        return None
+        return None, None
 
     def getCandlesFrom(self, candle):
         candlesApi = Candles()

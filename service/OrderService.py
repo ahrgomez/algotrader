@@ -1,6 +1,7 @@
 
 class Order():
     active = False
+    date = None
     price = None
     type = None
     stop_loss = None
@@ -11,7 +12,7 @@ class Order():
     support = None
     resistence = None
 
-    def New(self, instrument, price, type, stop_loss, take_profit, support, resistence):
+    def New(self, instrument, price, type, stop_loss, take_profit, support, resistence, date):
 
         self.instrument = instrument
         self.price = price
@@ -20,6 +21,7 @@ class Order():
         self.take_profit = take_profit
         self.support = support
         self.resistence = resistence
+        self.date = date
 
         return self
 
@@ -49,14 +51,14 @@ class OrderService():
         else:
             return self.orders[instrument]
 
-    def SaveOrder(self, instrument, price, type, stop_loss, take_profit, support, resistence):
+    def SaveOrder(self, instrument, price, type, stop_loss, take_profit, support, resistence, date):
         found = False
         for order in self.orders[instrument]:
             if order.type == type:
                 found = True
                 break
         if not found:
-            self.orders[instrument].append(Order().New(instrument, price, type, stop_loss, take_profit, support, resistence))
+            self.orders[instrument].append(Order().New(instrument, price, type, stop_loss, take_profit, support, resistence, date))
             return True
 
         return False

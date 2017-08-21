@@ -2,14 +2,18 @@ from core import SupportsAndResistences, Action
 import numpy as np
 from api.oanda import Candles
 from dateutil import parser
+from common import cross
 
 class SupportsStrategy(object):
 
     supportsAndResistences = []
     data = []
     inCourseDate = None
+    lastLineCrossed = []
+    instrument = None
 
-    def __init__(self):
+    def __init__(self, instrument):
+        self.instrument = instrument
         pass
 
     def Initialize(self, data):
@@ -25,10 +29,7 @@ class SupportsStrategy(object):
         candleDate = parser.parse(candle.time)
         self.UpdateSupportsAndResistences(candle)
 
-        nearPosition = self.getNearPosition(candle.mid.l)
-        nearResistence = self.supportsAndResistences[nearPosition]
-        nearSupport = self.supportsAndResistences[nearPosition - 1]
-
+        nearSupport, nearResistence = self.getNearLines(candle.mid.l)
         result = self.isPriceInUmbral(candle.mid.c, nearSupport, nearResistence)
 
         line = None
@@ -39,16 +40,52 @@ class SupportsStrategy(object):
             line = nearResistence
 
         if line is not None:
-            refutesCount = self.getSupportRefutesCountFrom(candle, line)
+
+            lastCrossedLine, lastCrossPoint = self.getLastLineCrossedFrom(candle, line)
+
+            refutesCount, upRefutesCount, downRefutesCount = self.getSupportRefutesCountFrom(lastCrossPoint, candle, line)
+
             if refutesCount > 2:
-                min48, max48 = self.getMinMaxFromLast48CandlesFrom(candle)
-                if line == nearSupport:
-                    type = "BUY"
+                min48, max48 = self.getMinMaxFromLastCrossPoint(candle, lastCrossPoint)
+
+                if lastCrossedLine > line :
+                    if upRefutesCount > downRefutesCount:
+                        tendencia = "TOHIGH"
+                    elif downRefutesCount > upRefutesCount:
+                        tendencia = "TOLOW"
+                    else:
+                        tendencia = "TOHIGH"
+                elif lastCrossedLine < line:
+                    if downRefutesCount > upRefutesCount:
+                        tendencia = "TOLOW"
+                    elif upRefutesCount > downRefutesCount:
+                        tendencia = "TOHIGH"
+                    else:
+                        tendencia = "TOLOW"
                 else:
+                    tendencia = None
+
+                if tendencia == "TOHIGH":
+                    type = "BUY"
+                    if max48 > nearResistence:
+                        auxSupport, nearResistence = self.getNearLines(max48)
+                elif tendencia == "TOLOW":
                     type = "SELL"
+                    if min48 < nearSupport:
+                        nearSupport, auxResistence = self.getNearLines(min48)
+                else:
+                    return None
+
                 return Action.Action().New(type, min48, max48, nearSupport, nearResistence, candleDate)
         else:
             return None
+
+    def getNearLines(self, price):
+        nearPosition = self.getNearPosition(price)
+        nearResistence = self.supportsAndResistences[nearPosition]
+        nearSupport = self.supportsAndResistences[nearPosition - 1]
+
+        return nearSupport, nearResistence
 
     def UpdateSupportsAndResistences(self, candle):
         candleDate = parser.parse(candle.time)
@@ -59,12 +96,12 @@ class SupportsStrategy(object):
             self.supportsAndResistences = srInstance.Calculate(self.data)
             self.inCourseDate = candleDate
 
-    def getLast48CandlesFrom(self, candle):
+    def getLastNCandlesFrom(self, candle, candlesCount = 48):
         candlesApi = Candles()
-        instrument = "EUR_USD"
+        instrument = self.instrument
         srKawrgs = {}
         srKawrgs['granularity'] = "H1"
-        srKawrgs['count'] = 48
+        srKawrgs['count'] = candlesCount
         srKawrgs['toTime'] = candle.time
 
         result = candlesApi.GetCandleSticks(instrument, **srKawrgs)
@@ -72,12 +109,26 @@ class SupportsStrategy(object):
 
         return result
 
-    def getMinMaxFromLast48CandlesFrom(self, candle):
+    def getMinMaxFromLast24CandlesFrom(self, candle):
         candlesApi = Candles()
-        instrument = "EUR_USD"
+        instrument = self.instrument
         srKawrgs = {}
         srKawrgs['granularity'] = "H1"
-        srKawrgs['count'] = 48
+        srKawrgs['count'] = 24
+        srKawrgs['toTime'] = candle.time
+
+        result = candlesApi.GetCandleSticks(instrument, **srKawrgs)
+        lows = [row.mid.l for row in result if row.complete == True]
+        highs = [row.mid.h for row in result if row.complete == True]
+
+        return np.amin(lows), np.amax(highs)
+
+    def getMinMaxFromLastCrossPoint(self, candle, lastCrossPoint):
+        candlesApi = Candles()
+        instrument = self.instrument
+        srKawrgs = {}
+        srKawrgs['granularity'] = "H1"
+        srKawrgs['fromTime'] = lastCrossPoint.time
         srKawrgs['toTime'] = candle.time
 
         result = candlesApi.GetCandleSticks(instrument, **srKawrgs)
@@ -92,17 +143,58 @@ class SupportsStrategy(object):
     def getNearPosition(self, price):
         return np.searchsorted(self.supportsAndResistences, [price, ], side='right')[0]
 
-    def getSupportRefutesCountFrom(self, candle, nearSupport):
-        last48Elements = self.getLast48CandlesFrom(candle)
+    def getSupportRefutesCountFrom(self, lastCrossedCandle, candle, nearSupport):
+        lastCandles = self.getCandlesInnerCandles(lastCrossedCandle, candle)
+        refutes = {}
+        actualCross = None
+        upRefutes = []
+        downRefutes = []
 
-        refutesCount = 0
+        for candleItem in lastCandles:
+            if cross.priceInRange(nearSupport, candleItem.mid.h, candleItem.mid.l):
+                actualCross = candleItem
+                if actualCross not in refutes:
+                    refutes[actualCross] = []
+            else:
+                if actualCross is not None:
+                    refutes[actualCross].append(candleItem)
+
+
+        validRefutes = [row for row in refutes if len(refutes[row]) > 5]
+
+        for refute in refutes:
+            if refute not in validRefutes:
+                continue
+            candleItem = refutes[refute][0]
+            if candleItem.mid.h > nearSupport:
+                upRefutes.append(refute)
+            else:
+                downRefutes.append(refute)
+
+        return len(validRefutes), len(upRefutes), len(downRefutes)
+
+    def getTendenciaFrom(self, candle):
+        lastNElements = self.getLastNCandlesFrom(candle, 192)
+        firstLow = lastNElements[0].mid.l
+        actualLow = candle.mid.l
+        tendencia = None
+
+        if firstLow < actualLow:
+            tendencia = "TOHIGH"
+        else:
+            tendencia = "TOLOW"
+
+        return tendencia
+
+    def anotherRefutesFuntion(self, candle, nearSupport):
+        last48Elements = self.getLastNCandlesFrom(candle, 96)
         upFound = False
         for candleItem in last48Elements:
             if not upFound:
-                if candleItem.mid.l > nearSupport:
+                if candleItem.mid.l > nearSupport and candleItem.mid.h > nearSupport:
                     upFound = True
             else:
-                if candleItem.mid.l < nearSupport:
+                if candleItem.mid.l < nearSupport and candleItem.mid.h > nearSupport:
                     refutesCount = refutesCount + 1
                     upFound = False
 
@@ -110,10 +202,10 @@ class SupportsStrategy(object):
             upFound = False
             for candleItem in last48Elements:
                 if not upFound:
-                    if candleItem.mid.h < nearSupport:
+                    if candleItem.mid.h < nearSupport and candleItem.mid.l < nearSupport:
                         upFound = True
                 else:
-                    if candleItem.mid.h > nearSupport:
+                    if candleItem.mid.h > nearSupport and candleItem.mid.l > nearSupport:
                         refutesCount = refutesCount + 1
                         upFound = False
 
@@ -129,7 +221,7 @@ class SupportsStrategy(object):
         fromTime = str(year) + "-" + str(month) + "-" + str(day) + "T00:00:00Z"
 
         candlesApi = Candles()
-        instrument = "EUR_USD"
+        instrument = self.instrument
         srKawrgs = {}
         srKawrgs['granularity'] = "D"
         srKawrgs['count'] = 1
@@ -139,3 +231,42 @@ class SupportsStrategy(object):
         result = [row for row in result if row.complete == True]
 
         return result[0]
+
+    def getLastLineCrossedFrom(self, candle, actualline):
+
+        candles = self.getCandlesFrom(candle)
+
+        for i in range(len(candles) - 1, -1,-1):
+            candle = candles[i]
+            for line in [line for line in self.supportsAndResistences if actualline != line]:
+                if cross.priceInRange(line, candle.mid.h, candle.mid.l):
+                    return line, candle
+        return None
+
+    def getCandlesFrom(self, candle):
+        candlesApi = Candles()
+        instrument = self.instrument
+        srKawrgs = {}
+        srKawrgs['granularity'] = "H1"
+        srKawrgs['toTime'] = candle.time
+
+        result = candlesApi.GetCandleSticks(instrument, **srKawrgs)
+        result = [row for row in result if row.complete == True]
+
+        if result is None:
+            print('puta')
+
+        return result
+
+    def getCandlesInnerCandles(self, candle1, candle2):
+        candlesApi = Candles()
+        instrument = self.instrument
+        srKawrgs = {}
+        srKawrgs['granularity'] = "H1"
+        srKawrgs['fromTime'] = candle1.time
+        srKawrgs['toTime'] = candle2.time
+
+        result = candlesApi.GetCandleSticks(instrument, **srKawrgs)
+        result = [row for row in result if row.complete == True]
+
+        return result

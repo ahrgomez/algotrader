@@ -2,55 +2,61 @@ from api.oanda import Candles
 from strategies import SupportsStrategy
 import time
 from service.OrderService import OrderService
+from common import cross
 
 data = []
 backtest_data = []
 ELEMENTS_COUNT = 670
 BACKTEST_MODE = True
-BACKTEST_FROM = "2017-03-01T00:00:00Z"
-BACKTEST_TO = "2017-08-17T00:00:00Z"
+BACKTEST_FROM = "2017-01-01T00:00:00Z"
+BACKTEST_TO = "2017-08-19T00:00:00Z"
+instrument = "EUR_USD"
+finalReport = []
+REPORT_PATH = "./final_report.csv"
+SUPPORTS_PATH = "./sr_final_report.csv"
 
 def main():
-    getDataToAnalize(ELEMENTS_COUNT)
+    getDataToAnalize(instrument, ELEMENTS_COUNT)
     if BACKTEST_MODE:
-        getBackTestData()
+        getBackTestData(instrument)
 
-    strategy = SupportsStrategy.SupportsStrategy()
+    strategy = SupportsStrategy.SupportsStrategy(instrument)
     strategy.Initialize(data)
 
     initProcess(strategy)
 
 def initProcess(strategy):
     orderService = OrderService()
-    orderService.InitInstrument("EUR_USD")
+    orderService.InitInstrument(instrument)
     for candle in getNextCandle():
-        activeOrder = orderService.GetActiveOrder("EUR_USD")
+        activeOrder = orderService.GetActiveOrder(instrument)
         if activeOrder is None:
             orderActivated = False
-            inactiveOrders = orderService.GetInactiveOrders("EUR_USD")
+            inactiveOrders = orderService.GetInactiveOrders(instrument)
             if inactiveOrders is not None:
                 for inactiveOrder in inactiveOrders:
                     orderActivated = makeActiveOrderIfIsPossible(orderService, inactiveOrder, candle)
                     if orderActivated:
                         break
-
             if not orderActivated:
                 action = strategy.GetAction(candle)
                 if action is not None:
-                    makeOrder(orderService, action)
+                    makeOrder(instrument, orderService, action)
             else:
                 strategy.UpdateSupportsAndResistences(candle)
         else:
             reviewOrder(orderService, activeOrder, candle)
             strategy.UpdateSupportsAndResistences(candle)
 
+    writeReportFile()
+    writeSupportsAndResistences(strategy.supportsAndResistences)
+
     print("END OF PROCESS!")
 
-def getDataToAnalize(count):
+def getDataToAnalize(instrument, count):
     global data
 
     candlesApi = Candles()
-    instrument = "EUR_USD"
     srKawrgs = {}
     srKawrgs['granularity'] = "D"
 
@@ -63,11 +69,10 @@ def getDataToAnalize(count):
     data = candlesApi.GetCandleSticks(instrument, **srKawrgs)
     data = [row for row in data if row.complete == True]
 
-def getBackTestData():
+def getBackTestData(instrument):
     global backtest_data
 
     candlesApi = Candles()
-    instrument = "EUR_USD"
     srKawrgs = {}
     srKawrgs['granularity'] = "H1"
     srKawrgs['fromTime'] = BACKTEST_FROM
@@ -87,7 +92,7 @@ def getNextCandle():
             yield data[0]
             time.sleep(10)
 
-def makeOrder(orderService, action):
+def makeOrder(instrument, orderService, action):
 
     price = None
     take_profit = None
@@ -102,55 +107,91 @@ def makeOrder(orderService, action):
         take_profit = action.resistence - ((action.resistence - action.support) * 0.90)
         stop_loss = action.lastMax
 
-    if orderService.SaveOrder("EUR_USD", price, action.type, stop_loss, take_profit, action.support, action.resistence):
+    if orderService.SaveOrder(instrument, price, action.type, stop_loss, take_profit, action.support, action.resistence, action.date):
         print("Type: " + action.type + "/ D: " + str(action.date) +
               "/ P: " + str(price) + "/ SL: " + str(stop_loss) +
               "/ TP: " + str(take_profit) + "/ S: " + str(action.support) +
               "/ R: " + str(action.resistence))
 
+        finalReport.append(str(action.date) + ",ORDER," +
+                           action.type + "," + str(price) +
+                           "," + str(stop_loss) + "," + str(take_profit) +
+                           "," + str(action.support) + "," + str(action.resistence))
+
 def reviewOrder(orderService, order, candle):
     if order.type == "BUY":
-        if priceInRange(order.take_profit, candle.mid.l, candle.mid.h):
+        if cross.priceInRange(order.take_profit, candle.mid.l, candle.mid.h):
             orderService.DeactivateOrder(order, "SUCCESS")
-            print("SUCCESS: " + str(candle.mid.c))
-        elif priceInRange(order.stop_loss, candle.mid.l, candle.mid.h):
-            orderService.DeactivateOrder(order, "FAILED")
-            print("FAILED: " + str(candle.mid.c))
-    elif order.type == "SELL":
-        if priceInRange(order.take_profit, candle.mid.l, candle.mid.h):
-            orderService.DeactivateOrder(order, "SUCCESS")
-            print("SUCCESS: " + str(candle.mid.c))
-        elif priceInRange(order.stop_loss, candle.mid.l, candle.mid.h):
-            orderService.DeactivateOrder(order, "FAILED")
-            print("FAILED: " + str(candle.mid.c))
+            print('\033[92m' + "SUCCESS: " + str(candle.mid.c) + '\033[0m')
 
+            finalReport.append(str(order.date) + ",SUCCESS," +
+                               order.type + "," + str(order.price) +
+                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
+                               "," + str(order.support) + "," + str(order.resistence))
+
+        elif cross.priceInRange(order.stop_loss, candle.mid.l, candle.mid.h):
+            orderService.DeactivateOrder(order, "FAILED")
+            print('\033[91m' + "FAILED: " + str(candle.mid.c) + '\033[0m')
+
+            finalReport.append(str(order.date) + ",FAILED," +
+                               order.type + "," + str(order.price) +
+                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
+                               "," + str(order.support) + "," + str(order.resistence))
+    elif order.type == "SELL":
+        if cross.priceInRange(order.take_profit, candle.mid.l, candle.mid.h):
+            orderService.DeactivateOrder(order, "SUCCESS")
+            print('\033[92m' + "SUCCESS: " + str(candle.mid.c) + '\033[0m')
+
+            finalReport.append(str(order.date) + ",SUCCESS," +
+                               order.type + "," + str(order.price) +
+                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
+                               "," + str(order.support) + "," + str(order.resistence))
+        elif cross.priceInRange(order.stop_loss, candle.mid.l, candle.mid.h):
+            orderService.DeactivateOrder(order, "FAILED")
+            print('\033[91m' + "FAILED: " + str(candle.mid.c) + '\033[0m')
+
+            finalReport.append(str(order.date) + ",FAILED," +
+                               order.type + "," + str(order.price) +
+                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
+                               "," + str(order.support) + "," + str(order.resistence))
 
 def makeActiveOrderIfIsPossible(orderService, order, candle):
     if order.type == "BUY":
-        if priceInRange(order.price, candle.mid.l, candle.mid.h):
+        if cross.priceInRange(order.price, candle.mid.l, candle.mid.h):
             orderService.ActivateOrder(order)
             print("ACTIVATED Type: " + order.type + "/ P: " + str(order.price) + "/ SL: " + str(order.stop_loss) + "/ TP: " + str(order.take_profit))
+
+            finalReport.append(str(order.date) + ",ACTIVATED," +
+                               order.type + "," + str(order.price) +
+                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
+                               "," + str(order.support) + "," + str(order.resistence))
             return True
     elif order.type == "SELL":
-        if priceInRange(order.price, candle.mid.l, candle.mid.h):
+        if cross.priceInRange(order.price, candle.mid.l, candle.mid.h):
             orderService.ActivateOrder(order)
             print("ACTIVATED Type: " + order.type + "/ P: " + str(order.price) + "/ SL: " + str(order.stop_loss) + "/ TP: " + str(order.take_profit))
+
+            finalReport.append(str(order.date) + ",ACTIVATED," +
+                               order.type + "," + str(order.price) +
+                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
+                               "," + str(order.support) + "," + str(order.resistence))
             return True
 
     return False
 
-def priceInRange(price, num1, num2):
-    minValue = num1
-    maxValue = num2
+def writeReportFile():
+    import csv
+    with open(REPORT_PATH, "w") as csv_file:
+        writer = csv.writer(csv_file, delimiter=',')
+        for text in finalReport:
+            writer.writerow(text)
 
-    if num1 < num2:
-        minValue = num1
-        maxValue = num2
-    else:
-        minValue = num2
-        maxValue = num2
-
-    return minValue <= price <= maxValue
+def writeSupportsAndResistences(supportsAndResistences):
+    import csv
+    with open(SUPPORTS_PATH, "w") as csv_file:
+        writer = csv.writer(csv_file, delimiter=',')
+        for text in supportsAndResistences:
+            writer.writerow(str(text))
 
 if __name__ == "__main__":
     main()

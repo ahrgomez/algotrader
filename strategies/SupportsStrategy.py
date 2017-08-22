@@ -165,6 +165,7 @@ class SupportsStrategy(object):
                     refutes[actualCross].append(candleItem)
 
 
+
         validRefutes = [row for row in refutes if len(refutes[row]) > 5]
 
         return refutes, validRefutes

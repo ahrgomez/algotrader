@@ -1,3 +1,5 @@
+import numpy as np
+
 def priceInRange(price, num1, num2):
     minValue = num1
     maxValue = num2
@@ -9,4 +11,6 @@ def priceInRange(price, num1, num2):
         minValue = num2
         maxValue = num1
 
-    return minValue <= price <= maxValue
+    result = np.isclose(price, [minValue, maxValue,], atol=0.0005)
+
+    return result[0] or result[1]

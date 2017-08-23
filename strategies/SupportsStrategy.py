@@ -29,17 +29,25 @@ class SupportsStrategy(object):
     def GetAction(self, candle):
 
         candleDate = parser.parse(candle.time)
+        if candleDate.day == 19 and candleDate.month == 4 and candleDate.hour == 16:
+            print('ahora')
         self.UpdateSupportsAndResistences(candle)
 
         nearSupport, nearResistence = self.getNearLines(candle.mid.l)
-        result = self.isPriceInUmbral(candle.mid.c, nearSupport, nearResistence)
 
         line = None
 
-        if result[0]:
+        if cross.priceInRange(nearSupport, candle.mid.l, candle.mid.h):
             line = nearSupport
-        elif result[1]:
+        elif cross.priceInRange(nearResistence, candle.mid.l, candle.mid.h):
             line = nearResistence
+
+        #result = self.isPriceInUmbral(candle.mid.c, nearSupport, nearResistence)
+
+        #if result[0]:
+        #    line = nearSupport
+        #elif result[1]:
+        #    line = nearResistence
 
         if line is not None:
 
@@ -98,6 +106,9 @@ class SupportsStrategy(object):
             self.inCourseDate = candleDate
 
     def isPriceInUmbral(self, price, nearSupport, nearResistence):
+
+
+
         return np.isclose(price, [nearSupport, nearResistence,], atol=0.0005)
 
     def getNearPosition(self, price):
@@ -113,7 +124,7 @@ class SupportsStrategy(object):
             if refute not in validRefutes:
                 continue
             candleItem = refutes[refute][0]
-            if candleItem.mid.h > nearSupport:
+            if candleItem.mid.h > line:
                 upRefutes.append(refute)
             else:
                 downRefutes.append(refute)

@@ -16,3 +16,6 @@ def priceInRange(price, num1, num2):
     else:
         result = np.isclose(price, [minValue, maxValue,], atol=0.0005)
         return result[0] or result[1]
+
+def candleTouchPrice(candle, price):
+    return candle.mid.l <= price <= candle.mid.h

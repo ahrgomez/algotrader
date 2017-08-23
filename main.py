@@ -13,7 +13,7 @@ BACKTEST_FROM = "2017-01-01T00:00:00Z"
 BACKTEST_TO = "2017-08-19T00:00:00Z"
 SR_TEMPORALITY = "D"
 PROCESS_TEMPORALITY = "H1"
-instrument = "GBP_USD"
+instrument = "EUR_CAD"
 finalReport = []
 REPORT_PATH = "./final_report.csv"
 SUPPORTS_PATH = "./sr_final_report.csv"
@@ -144,58 +144,48 @@ def makeOrder(instrument, orderService, action):
 
 def reviewOrder(orderService, order, candle):
     if order.type == "BUY":
-        if cross.priceInRange(order.take_profit, candle.mid.l, candle.mid.h):
-            orderService.DeactivateOrder(order, "SUCCESS")
-            print('\033[92m' + "SUCCESS: " + str(candle.mid.c) + '\033[0m')
+        if cross.candleTouchPrice(candle, order.take_profit):
+            orderService.DeactivateOrder(order, " SUCCESS")
+            print('\033[92m' + str(candle.time) + "SUCCESS: " + str(candle.mid.c) + '\033[0m')
 
-            finalReport.append(str(order.date) + ",SUCCESS," +
+            finalReport.append(str(candle.time) + ",SUCCESS," +
                                order.type + "," + str(order.price) +
                                "," + str(order.stop_loss) + "," + str(order.take_profit) +
                                "," + str(order.support) + "," + str(order.resistence))
 
-        elif cross.priceInRange(order.stop_loss, candle.mid.l, candle.mid.h):
-            orderService.DeactivateOrder(order, "FAILED")
-            print('\033[91m' + "FAILED: " + str(candle.mid.c) + '\033[0m')
+        elif cross.candleTouchPrice(candle, order.stop_loss):
+            orderService.DeactivateOrder(order, " FAILED")
+            print('\033[91m' + str(candle.time) + "FAILED: " + str(candle.mid.c) + '\033[0m')
 
-            finalReport.append(str(order.date) + ",FAILED," +
+            finalReport.append(str(candle.time) + ",FAILED," +
                                order.type + "," + str(order.price) +
                                "," + str(order.stop_loss) + "," + str(order.take_profit) +
                                "," + str(order.support) + "," + str(order.resistence))
     elif order.type == "SELL":
-        if cross.priceInRange(order.take_profit, candle.mid.l, candle.mid.h):
-            orderService.DeactivateOrder(order, "SUCCESS")
-            print('\033[92m' + "SUCCESS: " + str(candle.mid.c) + '\033[0m')
+        if cross.candleTouchPrice(candle, order.take_profit):
+            orderService.DeactivateOrder(order, " SUCCESS")
+            print('\033[92m' + str(candle.time) + "SUCCESS: " + str(candle.mid.c) + '\033[0m')
 
-            finalReport.append(str(order.date) + ",SUCCESS," +
+            finalReport.append(str(candle.time) + ",SUCCESS," +
                                order.type + "," + str(order.price) +
                                "," + str(order.stop_loss) + "," + str(order.take_profit) +
                                "," + str(order.support) + "," + str(order.resistence))
-        elif cross.priceInRange(order.stop_loss, candle.mid.l, candle.mid.h):
-            orderService.DeactivateOrder(order, "FAILED")
-            print('\033[91m' + "FAILED: " + str(candle.mid.c) + '\033[0m')
+        elif cross.candleTouchPrice(candle, order.stop_loss):
+            orderService.DeactivateOrder(order, " FAILED")
+            print('\033[91m' + str(candle.time) + "FAILED: " + str(candle.mid.c) + '\033[0m')
 
-            finalReport.append(str(order.date) + ",FAILED," +
+            finalReport.append(str(candle.time) + ",FAILED," +
                                order.type + "," + str(order.price) +
                                "," + str(order.stop_loss) + "," + str(order.take_profit) +
                                "," + str(order.support) + "," + str(order.resistence))
 
 def makeActiveOrderIfIsPossible(orderService, order, candle):
-    if order.type == "BUY":
-        if cross.priceInRange(order.price, candle.mid.l, candle.mid.h):
+    if cross.candleTouchPrice(candle, order.price):
+        if cross.candleTouchPrice(candle, order.price):
             orderService.ActivateOrder(order)
-            print("ACTIVATED Type: " + order.type + "/ P: " + str(order.price) + "/ SL: " + str(order.stop_loss) + "/ TP: " + str(order.take_profit))
+            print(str(candle.time) + " ACTIVATED Type: " + order.type + "/ P: " + str(order.price) + "/ SL: " + str(order.stop_loss) + "/ TP: " + str(order.take_profit))
 
-            finalReport.append(str(order.date) + ",ACTIVATED," +
-                               order.type + "," + str(order.price) +
-                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
-                               "," + str(order.support) + "," + str(order.resistence))
-            return True
-    elif order.type == "SELL":
-        if cross.priceInRange(order.price, candle.mid.l, candle.mid.h):
-            orderService.ActivateOrder(order)
-            print("ACTIVATED Type: " + order.type + "/ P: " + str(order.price) + "/ SL: " + str(order.stop_loss) + "/ TP: " + str(order.take_profit))
-
-            finalReport.append(str(order.date) + ",ACTIVATED," +
+            finalReport.append(str(candle.time) + ",ACTIVATED," +
                                order.type + "," + str(order.price) +
                                "," + str(order.stop_loss) + "," + str(order.take_profit) +
                                "," + str(order.support) + "," + str(order.resistence))

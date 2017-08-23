@@ -2,6 +2,7 @@ from api.oanda import Candles
 from strategies import SupportsStrategy
 import time
 from service.OrderService import OrderService
+from service.HistoryService import HistoryService
 from common import cross
 
 data = []
@@ -12,7 +13,7 @@ BACKTEST_FROM = "2017-01-01T00:00:00Z"
 BACKTEST_TO = "2017-08-19T00:00:00Z"
 SR_TEMPORALITY = "D"
 PROCESS_TEMPORALITY = "H1"
-instrument = "EUR_USD"
+instrument = "GBP_USD"
 finalReport = []
 REPORT_PATH = "./final_report.csv"
 SUPPORTS_PATH = "./sr_final_report.csv"
@@ -31,14 +32,25 @@ def main():
     if BACKTEST_MODE:
         getBackTestData(instrument)
 
-    strategy = SupportsStrategy.SupportsStrategy(instrument)
-    strategy.Initialize(data)
+    # ------Init services-------
 
-    initProcess(strategy)
+    historyService = HistoryService()
+    historyService.AddArrayDataToHistory(getTemporarilyData(instrument))
 
-def initProcess(strategy):
     orderService = OrderService()
     orderService.InitInstrument(instrument)
+
+    # ------Init strategy-------
+
+    strategy = SupportsStrategy.SupportsStrategy(instrument, historyService)
+    strategy.Initialize(data)
+
+    # ------Init process--------
+
+    initProcess(strategy, orderService, historyService)
+
+def initProcess(strategy, orderService, historyService):
+
     for candle in getNextCandle():
         activeOrder = orderService.GetActiveOrder(instrument)
         if activeOrder is None:
@@ -58,6 +70,7 @@ def initProcess(strategy):
         else:
             reviewOrder(orderService, activeOrder, candle)
             strategy.UpdateSupportsAndResistences(candle)
+        historyService.AddDataToHistory(candle)
 
     writeReportFile()
     writeSupportsAndResistences(strategy.supportsAndResistences)
@@ -92,6 +105,17 @@ def getBackTestData(instrument):
     backtest_data = candlesApi.GetCandleSticks(instrument, **srKawrgs)
     backtest_data = [row for row in backtest_data if row.complete == True]
 
+def getTemporarilyData(instrument):
+    candlesApi = Candles()
+    srKawrgs = {}
+    srKawrgs['granularity'] = PROCESS_TEMPORALITY
+    srKawrgs['toTime'] = BACKTEST_FROM
+
+    tempData = candlesApi.GetCandleSticks(instrument, **srKawrgs)
+    tempData = [row for row in tempData if row.complete == True]
+
+    return tempData
+
 def getNextCandle():
     global backtest_data
 
@@ -103,30 +127,19 @@ def getNextCandle():
             yield data[0]
             time.sleep(10)
 
+# ------ORDERS-------
+
 def makeOrder(instrument, orderService, action):
 
-    price = None
-    take_profit = None
-    stop_loss = None
-
-    if action.type == "BUY":
-        price = action.lastMax
-        stop_loss = action.lastMin
-        take_profit = action.support + ((action.resistence - action.support) * 0.90)
-    elif action.type == "SELL":
-        price = action.lastMin
-        take_profit = action.resistence - ((action.resistence - action.support) * 0.90)
-        stop_loss = action.lastMax
-
-    if orderService.SaveOrder(instrument, price, action.type, stop_loss, take_profit, action.support, action.resistence, action.date):
+    if orderService.SaveOrder(instrument, action.entryPoint, action.type, action.stopLoss, action.takeProfit, action.support, action.resistence, action.date):
         print("Type: " + action.type + "/ D: " + str(action.date) +
-              "/ P: " + str(price) + "/ SL: " + str(stop_loss) +
-              "/ TP: " + str(take_profit) + "/ S: " + str(action.support) +
+              "/ P: " + str(action.entryPoint) + "/ SL: " + str(action.stopLoss) +
+              "/ TP: " + str(action.takeProfit) + "/ S: " + str(action.support) +
               "/ R: " + str(action.resistence))
 
         finalReport.append(str(action.date) + ",ORDER," +
-                           action.type + "," + str(price) +
-                           "," + str(stop_loss) + "," + str(take_profit) +
+                           action.type + "," + str(action.entryPoint) +
+                           "," + str(action.stopLoss) + "," + str(action.takeProfit) +
                            "," + str(action.support) + "," + str(action.resistence))
 
 def reviewOrder(orderService, order, candle):
@@ -189,6 +202,8 @@ def makeActiveOrderIfIsPossible(orderService, order, candle):
             return True
 
     return False
+
+# ------REPORTS-------
 
 def writeReportFile():
     import csv

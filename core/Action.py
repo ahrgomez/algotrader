@@ -1,17 +1,19 @@
 
 class Action():
     type = None
-    lastMin = None
-    lastMax = None
+    entryPoint = None
+    stopLoss = None
+    takeProfit = None
     support = None
     resistence = None
     date = None
 
-    def New(self, type, lastMin, lastMax, support, resistence, date):
+    def New(self, type, entryPoint, stopLoss, takeProfit, support, resistence, date):
 
         self.type = type
-        self.lastMin = lastMin
-        self.lastMax = lastMax
+        self.entryPoint = entryPoint
+        self.stopLoss = stopLoss
+        self.takeProfit = takeProfit
         self.support = support
         self.resistence = resistence
         self.date = date

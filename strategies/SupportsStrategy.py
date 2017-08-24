@@ -29,8 +29,6 @@ class SupportsStrategy(object):
     def GetAction(self, candle):
 
         candleDate = parser.parse(candle.time)
-        if candleDate.day == 19 and candleDate.month == 4 and candleDate.hour == 16:
-            print('ahora')
         self.UpdateSupportsAndResistences(candle)
 
         nearSupport, nearResistence = self.getNearLines(candle.mid.l)
@@ -70,6 +68,10 @@ class SupportsStrategy(object):
                     entryPoint = lastCandle.mid.l
                     stopLoss = pullbackPreviousCandle.mid.h
 
+                    while(stopLoss < line):
+                        pullbackPreviousCandle =  self.historyService.GetData(toTime=pullbackPreviousCandle.time, count=2)[0]
+                        stopLoss = pullbackPreviousCandle.mid.h
+
                     auxSupport, auxResistence = self.getNearLines(entryPoint)
                     takeProfit = auxResistence - ((auxResistence - auxSupport) * 0.90)
 
@@ -77,6 +79,10 @@ class SupportsStrategy(object):
                     type = "BUY"
                     entryPoint = lastCandle.mid.h
                     stopLoss = pullbackPreviousCandle.mid.l
+
+                    while (stopLoss > line):
+                        pullbackPreviousCandle = self.historyService.GetData(toTime=pullbackPreviousCandle.time, count=2)[0]
+                        stopLoss = pullbackPreviousCandle.mid.l
 
                     auxSupport, auxResistence = self.getNearLines(entryPoint)
                     takeProfit = auxSupport + ((auxResistence - auxSupport) * 0.90)

@@ -132,69 +132,70 @@ def getNextCandle():
 def makeOrder(instrument, orderService, action):
 
     if orderService.SaveOrder(instrument, action.entryPoint, action.type, action.stopLoss, action.takeProfit, action.support, action.resistence, action.date):
-        print("Type: " + action.type + "/ D: " + str(action.date) +
-              "/ P: " + str(action.entryPoint) + "/ SL: " + str(action.stopLoss) +
-              "/ TP: " + str(action.takeProfit) + "/ S: " + str(action.support) +
-              "/ R: " + str(action.resistence))
+        addToReport(action.date, "ORDER", action.type, action.entryPoint, action.stopLoss, action.takeProfit, action.support, action.resistence)
 
-        finalReport.append(str(action.date) + ",ORDER," +
-                           action.type + "," + str(action.entryPoint) +
-                           "," + str(action.stopLoss) + "," + str(action.takeProfit) +
-                           "," + str(action.support) + "," + str(action.resistence))
 
 def reviewOrder(orderService, order, candle):
+
+    messageType = None
+
     if order.type == "BUY":
         if cross.candleTouchPrice(candle, order.take_profit):
             orderService.DeactivateOrder(order, " SUCCESS")
-            print('\033[92m' + str(candle.time) + "SUCCESS: " + str(candle.mid.c) + '\033[0m')
-
-            finalReport.append(str(candle.time) + ",SUCCESS," +
-                               order.type + "," + str(order.price) +
-                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
-                               "," + str(order.support) + "," + str(order.resistence))
-
+            messageType = "SUCCESS"
         elif cross.candleTouchPrice(candle, order.stop_loss):
             orderService.DeactivateOrder(order, " FAILED")
-            print('\033[91m' + str(candle.time) + "FAILED: " + str(candle.mid.c) + '\033[0m')
-
-            finalReport.append(str(candle.time) + ",FAILED," +
-                               order.type + "," + str(order.price) +
-                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
-                               "," + str(order.support) + "," + str(order.resistence))
+            messageType = "FAILED"
     elif order.type == "SELL":
         if cross.candleTouchPrice(candle, order.take_profit):
             orderService.DeactivateOrder(order, " SUCCESS")
-            print('\033[92m' + str(candle.time) + "SUCCESS: " + str(candle.mid.c) + '\033[0m')
-
-            finalReport.append(str(candle.time) + ",SUCCESS," +
-                               order.type + "," + str(order.price) +
-                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
-                               "," + str(order.support) + "," + str(order.resistence))
+            messageType = "SUCCESS"
         elif cross.candleTouchPrice(candle, order.stop_loss):
             orderService.DeactivateOrder(order, " FAILED")
-            print('\033[91m' + str(candle.time) + "FAILED: " + str(candle.mid.c) + '\033[0m')
+            messageType = "FAILED"
 
-            finalReport.append(str(candle.time) + ",FAILED," +
-                               order.type + "," + str(order.price) +
-                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
-                               "," + str(order.support) + "," + str(order.resistence))
+    if messageType is not None:
+        addToReport(candle.time, messageType, order.type, candle.mid.c, order.stop_loss, order.take_profit,
+                    order.support, order.resistence, messageType=messageType)
 
 def makeActiveOrderIfIsPossible(orderService, order, candle):
     if cross.candleTouchPrice(candle, order.price):
         if cross.candleTouchPrice(candle, order.price):
             orderService.ActivateOrder(order)
-            print(str(candle.time) + " ACTIVATED Type: " + order.type + "/ P: " + str(order.price) + "/ SL: " + str(order.stop_loss) + "/ TP: " + str(order.take_profit))
-
-            finalReport.append(str(candle.time) + ",ACTIVATED," +
-                               order.type + "," + str(order.price) +
-                               "," + str(order.stop_loss) + "," + str(order.take_profit) +
-                               "," + str(order.support) + "," + str(order.resistence))
+            addToReport(candle.time, "ACTIVATED", order.type, candle.mid.c, order.stop_loss, order.take_profit,
+                        order.support, order.resistence, messageType="INFO")
             return True
 
     return False
 
 # ------REPORTS-------
 
+def addToReport(date, action, type, entryPoint, stopLoss, takeProfit, support, resistence, messageType = None):
+    initColor = ""
+    endColor = ""
+
+    if messageType == "SUCCESS":
+        initColor = '\033[94m'
+        endColor = '\033[0m'
+    elif messageType == "FAILED":
+        initColor = '\033[91m'
+        endColor = '\033[0m'
+    elif messageType == "INFO":
+        initColor = '\033[93m'
+        endColor = '\033[0m'
+
+    print(initColor + "Action: " + action + "/ Type: " + type + "/ D: " + str(date) +
+          "/ P: " + str(entryPoint) + "/ SL: " + str(stopLoss) +
+          "/ TP: " + str(takeProfit) + "/ S: " + str(support) +
+          "/ R: " + str(resistence) + endColor)
+
+    if messageType == "SUCCESS" or messageType == "FAILED":
+        print("")
+
+    finalReport.append(str(date) + "," + action + "," +
+                       type + "," + str(entryPoint) +
+                       "," + str(stopLoss) + "," + str(takeProfit) +
+                       "," + str(support) + "," + str(resistence))
 def writeReportFile():
     import csv
     with open(REPORT_PATH, "w") as csv_file:
